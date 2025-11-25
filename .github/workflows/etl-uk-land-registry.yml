@@ -1,0 +1,83 @@
+name: UK Land Registry ETL
+
+on:
+  schedule:
+    # Run every Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      max_rows:
+        description: 'Maximum rows to process'
+        required: false
+        default: '100000'
+
+jobs:
+  etl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Cache postcode lookup
+        uses: actions/cache@v3
+        id: postcode-cache
+        with:
+          path: data/postcodes/postcodes.csv
+          key: uk-postcodes-v1
+      
+      - name: Download postcode lookup
+        if: steps.postcode-cache.outputs.cache-hit != 'true'
+        run: node scripts/download_postcodes.js
+      
+      - name: Download UK property data
+        run: |
+          mkdir -p data
+          echo "📥 Downloading UK Land Registry data..."
+          curl -L "https://landregistry.data.gov.uk/data/ppi/pp-monthly-update.csv" \
+            -o data/uk_ppd_full.csv
+          
+          # Take sample for free tier
+          head -n ${{ github.event.inputs.max_rows || 100000 }} data/uk_ppd_full.csv \
+            > data/uk_ppd_trimmed.csv
+          
+          echo "✅ Downloaded $(wc -l < data/uk_ppd_trimmed.csv) rows"
+      
+      - name: Run ETL
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ETL_MAX_ROWS: ${{ github.event.inputs.max_rows || 100000 }}
+        run: |
+          echo "🚀 Starting ETL process..."
+          node scripts/etl_github_action.js
+      
+      - name: Verify data
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          npm install -g node-postgres
+          echo "📊 Checking database..."
+          psql $DATABASE_URL -c "SELECT COUNT(*) as total_cells FROM heatmap_cells;"
+          psql $DATABASE_URL -c "SELECT COUNT(*) as aggregated FROM heatmap_aggregated;"
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f data/uk_ppd_full.csv data/uk_ppd_trimmed.csv
+          echo "✅ Cleanup complete"
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ ETL job failed"
+          echo "Check logs at: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

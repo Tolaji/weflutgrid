@@ -1,0 +1,53 @@
+name: Database Backup
+
+on:
+  schedule:
+    # Run daily at 3 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      
+      - name: Create backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          BACKUP_FILE="backup-$(date +%Y%m%d-%H%M%S).sql"
+          echo "📦 Creating backup: $BACKUP_FILE"
+          
+          pg_dump $DATABASE_URL \
+            --no-owner \
+            --no-acl \
+            --clean \
+            --if-exists \
+            > $BACKUP_FILE
+          
+          # Compress backup
+          gzip $BACKUP_FILE
+          
+          echo "✅ Backup created: ${BACKUP_FILE}.gz"
+          echo "Size: $(du -h ${BACKUP_FILE}.gz | cut -f1)"
+      
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: database-backup
+          path: backup-*.sql.gz
+          retention-days: 7
+      
+      - name: Cleanup old backups
+        run: |
+          # Keep only last 7 days of backups
+          find . -name "backup-*.sql.gz" -mtime +7 -delete

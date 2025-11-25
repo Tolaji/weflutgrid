@@ -1,0 +1,38 @@
+{
+  "name": "weflutgrid",
+  "version": "1.0.0",
+  "description": "Global property price heatmap with zero-budget deployment",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "etl": "node scripts/etl_github_action.js",
+    "setup": "bash scripts/setup-free.sh",
+    "deploy": "bash scripts/deploy-free.sh",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts"
+  },
+  "keywords": ["property", "heatmap", "h3", "real-estate"],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "h3-js": "^4.1.0",
+    "pg": "^8.11.3",
+    "csv-parser": "^3.0.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/pg": "^8.10.9",
+    "typescript": "^5.3.2",
+    "ts-node": "^10.9.2",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.10",
+    "eslint": "^8.55.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.2",
+    "@typescript-eslint/parser": "^6.13.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
