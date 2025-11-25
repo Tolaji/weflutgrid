@@ -38,24 +38,19 @@ function tileToBBox(z, x, y) {
 export default async function handler(req, res) {
   const { z, x, y } = req.query;
   
-  // Parse coordinates
   const zoom = parseInt(z);
   const tileX = parseInt(x);
   const tileY = parseInt(y);
   
-  // Validate input
   if (isNaN(zoom) || isNaN(tileX) || isNaN(tileY)) {
     return res.status(400).json({ error: 'Invalid tile coordinates' });
   }
   
-  // Get H3 level for this zoom
   const h3Level = ZOOM_TO_H3[zoom] || 8;
-  
-  // Get bounding box
-  const bbox = tileToBBox(zoom, tileX, tileY);
+  const [west, south, east, north] = tileToBBox(zoom, tileX, tileY);
   
   try {
-    // Query database
+    // FIXED: Add spatial filter
     const result = await pool.query(`
       SELECT 
         h3_index,
@@ -65,8 +60,12 @@ export default async function handler(req, res) {
         normalized_value as value
       FROM heatmap_aggregated
       WHERE h3_level = $1
+        AND ST_Intersects(
+          h3_cell_to_geometry(h3_index),
+          ST_MakeEnvelope($2, $3, $4, $5, 4326)
+        )
       LIMIT 2000
-    `, [h3Level]);
+    `, [h3Level, west, south, east, north]);
     
     // Convert to GeoJSON
     const features = result.rows.map(row => {

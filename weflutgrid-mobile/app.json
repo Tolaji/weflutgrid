@@ -33,7 +33,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "tileApiUrl": "https://your-project.vercel.app"
+      "tileApiUrl": "https://weflutgrid.vercel.app"
     }
   }
 }
