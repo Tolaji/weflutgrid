@@ -1,5 +1,4 @@
 -- Sample data for testing (London area)
-
 INSERT INTO heatmap_cells (
   h3_index, h3_level, country_code, region,
   metric_source, metric_type, metric_value,
@@ -17,13 +16,10 @@ INSERT INTO heatmap_cells (
   
   -- Manchester
   ('8a196d452d7ffff', 10, 'GB', 'Manchester', 'sample', 'median_price', 280000, 52, 0.93, NOW(), NOW()),
-  ('8a196d4529bffff', 10, 'GB', 'Manchester', 'sample', 'median_price', 310000, 41, 0.88, NOW(), NOW())
-;
+  ('8a196d4529bffff', 10, 'GB', 'Manchester', 'sample', 'median_price', 310000, 41, 0.88, NOW(), NOW());
 
 -- Refresh aggregated view
 REFRESH MATERIALIZED VIEW heatmap_aggregated;
 
 -- Compute percentiles
 SELECT compute_percentiles('GB');
-
-\echo 'Sample data inserted successfully!'
