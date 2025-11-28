@@ -1,83 +1,43 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
-import MapView, { Polygon, Region } from 'react-native-maps';
-import { StatusBar } from 'expo-status-bar';
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+} from 'react-native';
+import MapView, { Polygon } from 'react-native-maps';
 import Constants from 'expo-constants';
+import { StatusBar } from 'expo-status-bar';
+import { ErrorBoundary } from './ErrorBoundary';
 
-// Get tile API URL from config
-const TILE_API_URL = Constants.expoConfig?.extra?.tileApiUrl || 'http://localhost:3000';
-
-interface HexagonData {
-  coordinates: Array<{ latitude: number; longitude: number }>;
-  price: number;
-  count: number;
-  confidence: number;
-  value: number;
-}
+const TILE_API_URL =
+  Constants.expoConfig?.extra?.tileApiUrl || 'http://localhost:3000';
 
 export default function App() {
-  const [hexagons, setHexagons] = useState<HexagonData[]>([]);
-  const [selectedHex, setSelectedHex] = useState<HexagonData | null>(null);
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
+  const [hexagons, setHexagons] = useState<any[]>([]);
+  const [selectedHex, setSelectedHex] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadTiles = useCallback(async (region: Region) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Calculate tile coordinates from region
-      const z = Math.floor(Math.log2(360 / region.longitudeDelta));
-      const x = Math.floor((region.longitude + 180) / 360 * Math.pow(2, z));
-      const y = Math.floor(
-        (1 - Math.log(Math.tan(region.latitude * Math.PI / 180) + 
-         1 / Math.cos(region.latitude * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z)
-      );
-
-      const tileUrl = `${TILE_API_URL}/tiles/${z}/${x}/${y}.geojson`;
-      console.log('Fetching tile:', tileUrl);
-
-      const response = await fetch(tileUrl);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const geojson = await response.json();
-      
-      const hexData: HexagonData[] = geojson.features.map((feature: any) => ({
-        coordinates: feature.geometry.coordinates[0].map(([lng, lat]: number[]) => ({
-          latitude: lat,
-          longitude: lng
-        })),
-        price: feature.properties.price,
-        count: feature.properties.count,
-        confidence: feature.properties.confidence,
-        value: feature.properties.value
-      }));
-
-      setHexagons(hexData);
-      console.log(`Loaded ${hexData.length} hexagons`);
-
-    } catch (err) {
-      console.error('Failed to load tiles:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load tiles');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // ── Helper functions (now correctly scoped inside the component) ──
   const getColor = (value: number, confidence: number): string => {
-    // Color gradient from green (low) to red (high)
     const colors = [
       { threshold: 0.2, color: 'rgba(45, 201, 55, ALPHA)' },
       { threshold: 0.4, color: 'rgba(152, 216, 62, ALPHA)' },
       { threshold: 0.6, color: 'rgba(231, 180, 22, ALPHA)' },
       { threshold: 0.8, color: 'rgba(252, 108, 0, ALPHA)' },
-      { threshold: 1.0, color: 'rgba(204, 50, 50, ALPHA)' }
+      { threshold: 1.0, color: 'rgba(204, 50, 50, ALPHA)' },
     ];
 
-    // Adjust opacity based on confidence
     const alpha = Math.max(0.3, confidence * 0.8);
 
     for (const { threshold, color } of colors) {
@@ -85,18 +45,74 @@ export default function App() {
         return color.replace('ALPHA', alpha.toFixed(2));
       }
     }
-
     return colors[colors.length - 1].color.replace('ALPHA', alpha.toFixed(2));
   };
 
   const formatPrice = (price: number): string => {
-    if (price >= 1000000) {
-      return `£${(price / 1000000).toFixed(1)}M`;
-    } else if (price >= 1000) {
-      return `£${(price / 1000).toFixed(0)}K`;
+    if (price >= 1_000_000) {
+      return `£${(price / 1_000_000).toFixed(1)}M`;
+    } else if (price >= 1_000) {
+      return `£${(price / 1_000).toFixed(0)}K`;
     }
     return `£${price.toFixed(0)}`;
   };
+  // ── End of helpers ──
+
+  const loadTiles = useCallback(
+    async (region: {
+      latitude: number;
+      longitude: number;
+      latitudeDelta: number;
+      longitudeDelta: number;
+    }) => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const z = Math.floor(Math.log2(360 / region.longitudeDelta));
+        const x = Math.floor(
+          ((region.longitude + 180) / 360) * Math.pow(2, z)
+        );
+
+        const y = Math.floor(
+          ((1 -
+            Math.log(
+              Math.tan((region.latitude * Math.PI) / 180) +
+              1 / Math.cos((region.latitude * Math.PI) / 180)) /
+            Math.PI) /
+            2) *
+            Math.pow(2, z)
+        );
+
+        const tileUrl = `${TILE_API_URL}/tiles/${z}/${x}/${y}.geojson`;
+        const response = await fetch(tileUrl);
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const geojson = await response.json();
+
+        const hexData = geojson.features.map((feature: any) => ({
+          coordinates: feature.geometry.coordinates[0].map(
+            ([lng, lat]: number[]) => ({
+              latitude: lat,
+              longitude: lng,
+            })
+          ),
+          price: feature.properties.price,
+          count: feature.properties.count,
+          confidence: feature.properties.confidence,
+          value: feature.properties.value,
+        }));
+
+        setHexagons(hexData);
+      } catch (err: any) {
+        setError(err.message || 'Failed to load tiles');
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
   return (
     <View style={styles.container}>
@@ -134,8 +150,7 @@ export default function App() {
       {/* Error message */}
       {error && (
         <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>⚠️ {error}
-            </Text>
+          <Text style={styles.errorText}>Warning: {error}</Text>
           <TouchableOpacity onPress={() => setError(null)}>
             <Text style={styles.dismissText}>Dismiss</Text>
           </TouchableOpacity>
@@ -156,7 +171,9 @@ export default function App() {
 
           <View style={styles.popupRow}>
             <Text style={styles.popupLabel}>Median Price:</Text>
-            <Text style={styles.popupValue}>{formatPrice(selectedHex.price)}</Text>
+            <Text style={styles.popupValue}>
+              {formatPrice(selectedHex.price)}
+            </Text>
           </View>
 
           <View style={styles.popupRow}>
@@ -175,7 +192,7 @@ export default function App() {
             <View
               style={[
                 styles.confidenceBar,
-                { width: `${selectedHex.confidence * 100}%` }
+                { width: `${selectedHex.confidence * 100}%` },
               ]}
             />
           </View>
@@ -203,19 +220,16 @@ export default function App() {
   );
 }
 
+// ── Styles (unchanged) ──
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  map: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  map: { flex: 1 },
   loadingOverlay: {
     position: 'absolute',
     top: '50%',
     left: '50%',
     transform: [{ translateX: -50 }, { translateY: -50 }],
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
     padding: 20,
     borderRadius: 10,
     alignItems: 'center',
@@ -225,11 +239,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 14,
-    color: '#666',
-  },
+  loadingText: { marginTop: 10, fontSize: 14, color: '#666' },
   errorBanner: {
     position: 'absolute',
     top: 50,
@@ -243,22 +253,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
   },
-  errorText: {
-    flex: 1,
-    color: '#c62828',
-    fontSize: 14,
-  },
-  dismissText: {
-    color: '#1976d2',
-    fontWeight: 'bold',
-    marginLeft: 10,
-  },
+  errorText: { flex: 1, color: '#c62828', fontSize: 14 },
+  dismissText: { color: '#1976d2', fontWeight: 'bold' },
   popup: {
     position: 'absolute',
     bottom: 20,
@@ -282,30 +279,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  closeButtonText: {
-    fontSize: 24,
-    color: '#999',
-  },
-  popupTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    color: '#333',
-  },
-  popupRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  popupLabel: {
-    fontSize: 16,
-    color: '#666',
-  },
-  popupValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-  },
+  closeButtonText: { fontSize: 24, color: '#999' },
+  popupTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, color: '#333' },
+  popupRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  popupLabel: { fontSize: 16, color: '#666' },
+  popupValue: { fontSize: 16, fontWeight: 'bold', color: '#333' },
   confidenceMeter: {
     height: 8,
     backgroundColor: '#e0e0e0',
@@ -313,23 +291,15 @@ const styles = StyleSheet.create({
     marginTop: 10,
     overflow: 'hidden',
   },
-  confidenceBar: {
-    height: '100%',
-    backgroundColor: '#4caf50',
-  },
+  confidenceBar: { height: '100%', backgroundColor: '#4caf50' },
   legend: {
     position: 'absolute',
     top: 60,
     right: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
     padding: 12,
     borderRadius: 10,
     minWidth: 140,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
   },
   legendTitle: {
     fontSize: 14,
@@ -342,16 +312,13 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 4,
     marginBottom: 6,
-    backgroundColor: '#2dc937',
+    backgroundColor: '#2dc937',   // temporary solid colour – we can make a real gradient later
   },
   legendLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  legendLabel: {
-    fontSize: 11,
-    color: '#666',
-  },
+  legendLabel: { fontSize: 11, color: '#666' },
   legendInfo: {
     fontSize: 10,
     color: '#999',
@@ -359,4 +326,3 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
-        

@@ -33,7 +33,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "tileApiUrl": "https://weflutgrid.vercel.app"
+      "tileApiUrl": "https://weflutgrid-9nid2pfyf-tolajis-projects.vercel.app"
     }
   }
 }

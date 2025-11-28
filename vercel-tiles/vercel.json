@@ -1,9 +1,5 @@
 {
   "version": 2,
-  "env": {
-    "DATABASE_URL": "@database_url"
-  },
-  "regions": ["iad1", "lhr1", "syd1"],
   "rewrites": [
     {
       "source": "/tiles/:z/:x/:y.geojson",

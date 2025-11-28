@@ -33,6 +33,32 @@ function tileToBBox(z, x, y) {
 }
 
 /**
+ * Get H3 cells for bounding box at specific resolution
+ */
+function getH3CellsForBBox(west, south, east, north, resolution) {
+  try {
+    // Use polyfill to get all H3 cells covering the bbox
+    const polygon = [
+      [
+        [west, south],
+        [east, south], 
+        [east, north],
+        [west, north],
+        [west, south]
+      ]
+    ];
+    
+    return h3.polygonToCells(polygon, resolution);
+  } catch (error) {
+    console.warn('H3 polyfill failed, using center point:', error.message);
+    // Fallback: just get the center cell
+    const centerLat = (south + north) / 2;
+    const centerLng = (west + east) / 2;
+    return [h3.latLngToCell(centerLat, centerLng, resolution)];
+  }
+}
+
+/**
  * Main tile handler
  */
 export default async function handler(req, res) {
@@ -50,50 +76,69 @@ export default async function handler(req, res) {
   const [west, south, east, north] = tileToBBox(zoom, tileX, tileY);
   
   try {
-    // FIXED: Add spatial filter
-    const result = await pool.query(`
+    // Get H3 cells for this tile
+    const h3Cells = getH3CellsForBBox(west, south, east, north, h3Level);
+    
+    if (h3Cells.length === 0) {
+      return res.status(200).json({
+        type: 'FeatureCollection',
+        features: []
+      });
+    }
+    
+    // Query database using the NEW view with percentiles
+    const placeholders = h3Cells.map((_, i) => `$${i + 1}`).join(',');
+    const query = `
       SELECT 
         h3_index,
+        h3_level,
         weighted_metric as price,
         tx_count as count,
         avg_confidence as confidence,
         normalized_value as value
-      FROM heatmap_aggregated
-      WHERE h3_level = $1
-        AND ST_Intersects(
-          h3_cell_to_geometry(h3_index),
-          ST_MakeEnvelope($2, $3, $4, $5, 4326)
-        )
+      FROM heatmap_with_percentiles
+      WHERE h3_index IN (${placeholders})
+        AND h3_level = $${h3Cells.length + 1}
       LIMIT 2000
-    `, [h3Level, west, south, east, north]);
+    `;
     
-    // Convert to GeoJSON
+    const params = [...h3Cells, h3Level];
+    const result = await pool.query(query, params);
+    
+    // Convert to GeoJSON with H3-js generated geometries
     const features = result.rows.map(row => {
-      const boundary = h3.cellToBoundary(row.h3_index, true);
-      const coordinates = boundary.map(([lat, lng]) => [lng, lat]);
-      coordinates.push(coordinates[0]); // Close polygon
-      
-      return {
-        type: 'Feature',
-        properties: {
-          price: parseFloat(row.price) || 0,
-          count: parseInt(row.count) || 0,
-          confidence: parseFloat(row.confidence) || 0,
-          value: parseFloat(row.value) || 0.5
-        },
-        geometry: {
-          type: 'Polygon',
-          coordinates: [coordinates]
-        }
-      };
-    });
+      try {
+        const boundary = h3.cellToBoundary(row.h3_index, true);
+        const coordinates = boundary.map(([lat, lng]) => [lng, lat]);
+        coordinates.push(coordinates[0]); // Close polygon
+        
+        return {
+          type: 'Feature',
+          properties: {
+            price: parseFloat(row.price) || 0,
+            count: parseInt(row.count) || 0,
+            confidence: parseFloat(row.confidence) || 0,
+            value: parseFloat(row.value) || 0.5,
+            h3_index: row.h3_index,
+            h3_level: row.h3_level
+          },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [coordinates]
+          }
+        };
+      } catch (error) {
+        console.warn('Failed to generate geometry for H3 cell:', row.h3_index, error.message);
+        return null;
+      }
+    }).filter(feature => feature !== null);
     
     const geojson = {
       type: 'FeatureCollection',
       features
     };
     
-    // Set headers
+    // Set headers for caching and CORS
     res.setHeader('Content-Type', 'application/geo+json');
     res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -103,9 +148,10 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Tile generation error:', error);
     
-    return res.status(500).json({
-      error: 'Failed to generate tile',
-      message: error.message
+    // Return empty feature collection on error
+    return res.status(200).json({
+      type: 'FeatureCollection',
+      features: []
     });
   }
 }
