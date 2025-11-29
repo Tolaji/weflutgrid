@@ -5,6 +5,11 @@ import { execSync, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import https from 'https';
+import dotenv from "dotenv";
+dotenv.config();
+
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,14 +78,69 @@ console.log("");
 
 // Step 3: Process Land Registry CSV
 console.log("Step 3: Processing UK Land Registry data...");
-const sourceCsv = 'pp-2025.csv';
-if (!fs.existsSync(sourceCsv)) {
-  console.error(`pp-2025.csv not found in project root`);
-  console.error(`   Download it from:`);
-  console.error(`   http://prod.publicdata.landregistry.gov.uk.s3-website-eu-west-1.amazonaws.com/pp-2025.csv`);
-  process.exit(1);
+
+const rawDir = path.join('data', 'raw', 'uk_land_registry');
+const sourceCsv = path.join(rawDir, 'pp-2025.csv');
+const downloadUrl = 'http://prod.publicdata.landregistry.gov.uk.s3-website-eu-west-1.amazonaws.com/pp-2025.csv';
+
+// Ensure folder exists
+fs.mkdirSync(rawDir, { recursive: true });
+
+// Helper: synchronous download using Promises + execSync wait
+function downloadFileSync(url, dest) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+
+    https.get(url, response => {
+      if (response.statusCode !== 200) {
+        return reject(new Error(`HTTP ${response.statusCode}`));
+      }
+
+      response.pipe(file);
+
+      file.on('finish', () => file.close(resolve));
+      file.on('error', reject);
+    }).on('error', reject);
+  });
 }
 
+if (!fs.existsSync(sourceCsv)) {
+  console.log("   Land Registry CSV missing. Downloading...");
+  try {
+    // Use a synchronous "wait" for the Promise
+    execSync('node -e "' +
+      `require('https').get('${downloadUrl}', res => {` +
+      `  const fs = require('fs');` +
+      `  const file = fs.createWriteStream('${sourceCsv.replace(/\\/g, '\\\\')}');` +
+      `  res.pipe(file);` +
+      `  file.on('finish', () => file.close());` +
+      `});"` ,
+      { stdio: 'ignore' }
+    );
+
+    console.log("   Download initiated, waiting for file to finalize...");
+
+    // Additional check: wait until file exists and is non-zero size
+    let attempts = 0;
+    while ((!fs.existsSync(sourceCsv) || fs.statSync(sourceCsv).size < 1000) && attempts < 20) {
+      await new Promise(r => setTimeout(r, 500)); // 0.5s delay
+      attempts++;
+    }
+
+    if (!fs.existsSync(sourceCsv)) {
+      throw new Error("Download failed or incomplete.");
+    }
+
+    console.log("   Download complete.");
+  } catch (err) {
+    console.error("Download failed:", err.message);
+    process.exit(1);
+  }
+} else {
+  console.log("   Using existing Land Registry CSV.");
+}
+
+// Continue processing
 fs.mkdirSync('data', { recursive: true });
 const fullPath = path.join('data', 'uk_ppd_full.csv');
 const trimmedPath = path.join('data', 'uk_ppd_trimmed.csv');
@@ -98,6 +158,7 @@ const sampleLines = lines.slice(0, 100001); // header + 100k rows
 fs.writeFileSync(trimmedPath, sampleLines.join('\n'), 'utf-8');
 
 console.log(`   ${sampleLines.length - 1} rows ready for processing\n`);
+
 
 // Step 4: Test DB connection
 console.log("Step 4: Testing database connection...");

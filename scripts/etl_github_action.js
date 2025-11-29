@@ -29,6 +29,10 @@ class PostcodeLookup {
       fs.createReadStream(csvPath)
         .pipe(csv())
         .on('data', (row) => {
+          if (!row.postcode || row.postcode.trim() === "") {
+              // skip rows without postcode (common in recent LR data)
+              return;
+          }
           const postcode = row.postcode.replace(/\s/g, '').toUpperCase();
           this.cache.set(postcode, {
             lat: parseFloat(row.latitude),
@@ -151,18 +155,21 @@ class UKLandRegistryETL {
     return new Promise((resolve, reject) => {
       let rowCount = 0;
       
-      fs.createReadStream(csvPath)
+      // Store the stream in a variable so we can reference it later
+      const stream = fs.createReadStream(csvPath)
         .pipe(csv({
           headers: ['tx_id', 'price', 'date', 'postcode', 'type', 'new', 
                    'duration', 'paon', 'saon', 'street', 'locality', 
                    'city', 'district', 'county', 'ppd_cat', 'record_status']
-        }))
+        }));
+      
+      stream
         .on('data', (row) => {
           rowCount++;
           
-          // Stop at max rows
+          // Stop at max rows - FIXED: use stream.destroy() instead of this.destroy()
           if (rowCount > MAX_ROWS) {
-            this.destroy();
+            stream.destroy();  // Correctly reference the stream variable
             return;
           }
 
