@@ -44,3 +44,8 @@ package-lock.json
 yarn.lock
 
 *.csv
+# Huge raw data files – never commit these
+data/raw/uk_land_registry/*.csv
+data/postcodes/*.zip
+data/postcodes/*.csv
+
