@@ -49,3 +49,10 @@ data/raw/uk_land_registry/*.csv
 data/postcodes/*.zip
 data/postcodes/*.csv
 
+# Ignore heavy data forever
+data/raw/
+data/postcodes/
+*.csv
+*.zip
+*.tsv
+*.xlsx
