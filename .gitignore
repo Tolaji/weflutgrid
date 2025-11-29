@@ -42,3 +42,5 @@ logs/
 
 package-lock.json
 yarn.lock
+
+*.csv
