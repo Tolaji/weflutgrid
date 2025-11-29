@@ -5,11 +5,27 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
-import MapView, { Polygon } from 'react-native-maps';
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import { ErrorBoundary } from './ErrorBoundary';
+
+// Conditional imports for native vs web
+let MapView: any;
+let Polygon: any;
+
+if (Platform.OS === 'web') {
+  // Use the web component
+  const WebMapComponent = require('./MapComponent.web').default;
+  MapView = WebMapComponent;
+  Polygon = WebMapComponent.Polygon;
+} else {
+  // Use the native component
+  const NativeMapComponent = require('./MapComponent.native').default;
+  MapView = NativeMapComponent;
+  Polygon = NativeMapComponent.Polygon;
+}
 
 const TILE_API_URL =
   Constants.expoConfig?.extra?.tileApiUrl || 'http://localhost:3000';
@@ -28,7 +44,6 @@ function AppContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ── Helper functions (now correctly scoped inside the component) ──
   const getColor = (value: number, confidence: number): string => {
     const colors = [
       { threshold: 0.2, color: 'rgba(45, 201, 55, ALPHA)' },
@@ -56,7 +71,6 @@ function AppContent() {
     }
     return `£${price.toFixed(0)}`;
   };
-  // ── End of helpers ──
 
   const loadTiles = useCallback(
     async (region: {
@@ -85,27 +99,38 @@ function AppContent() {
         );
 
         const tileUrl = `${TILE_API_URL}/tiles/${z}/${x}/${y}.geojson`;
+        console.log('Fetching:', tileUrl);
+
         const response = await fetch(tileUrl);
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const geojson = await response.json();
+        console.log('Received features:', geojson.features?.length || 0);
 
-        const hexData = geojson.features.map((feature: any) => ({
-          coordinates: feature.geometry.coordinates[0].map(
-            ([lng, lat]: number[]) => ({
-              latitude: lat,
-              longitude: lng,
-            })
-          ),
-          price: feature.properties.price,
-          count: feature.properties.count,
-          confidence: feature.properties.confidence,
-          value: feature.properties.value,
-        }));
+        // loadTiles function, coordinate mapping:
+        const hexData = geojson.features.map((feature: any) => {
+          // Handle both coordinate formats: [lng, lat] and {latitude, longitude}
+          const coordinates = feature.geometry.coordinates[0].map((coord: any) => {
+            if (Array.isArray(coord)) {
+              return { latitude: coord[1], longitude: coord[0] };
+            } else {
+              return { latitude: coord.latitude, longitude: coord.longitude };
+            }
+          });
+
+          return {
+            coordinates,
+            price: feature.properties.price,
+            count: feature.properties.count,
+            confidence: feature.properties.confidence,
+            value: feature.properties.value,
+          };
+        });
 
         setHexagons(hexData);
       } catch (err: any) {
+        console.error('Tile loading error:', err);
         setError(err.message || 'Failed to load tiles');
       } finally {
         setLoading(false);
@@ -139,7 +164,6 @@ function AppContent() {
         ))}
       </MapView>
 
-      {/* Loading indicator */}
       {loading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#2196F3" />
@@ -147,17 +171,15 @@ function AppContent() {
         </View>
       )}
 
-      {/* Error message */}
       {error && (
         <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>Warning: {error}</Text>
+          <Text style={styles.errorText}>⚠️ {error}</Text>
           <TouchableOpacity onPress={() => setError(null)}>
             <Text style={styles.dismissText}>Dismiss</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Property info popup */}
       {selectedHex && (
         <View style={styles.popup}>
           <TouchableOpacity
@@ -199,7 +221,6 @@ function AppContent() {
         </View>
       )}
 
-      {/* Legend */}
       <View style={styles.legend}>
         <Text style={styles.legendTitle}>Price Range</Text>
         <View style={styles.legendGradient} />
@@ -215,12 +236,18 @@ function AppContent() {
         )}
       </View>
 
+      {/* Platform indicator */}
+      <View style={styles.platformBadge}>
+        <Text style={styles.platformText}>
+          {Platform.OS === 'web' ? '🌐 Web' : '📱 Native'}
+        </Text>
+      </View>
+
       <StatusBar style="auto" />
     </View>
   );
 }
 
-// ── Styles (unchanged) ──
 const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { flex: 1 },
@@ -253,9 +280,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   errorText: { flex: 1, color: '#c62828', fontSize: 14 },
-  dismissText: { color: '#1976d2', fontWeight: 'bold' },
+  dismissText: { color: '#1976d2', fontWeight: 'bold', marginLeft: 10 },
   popup: {
     position: 'absolute',
     bottom: 20,
@@ -300,6 +332,11 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     minWidth: 140,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   legendTitle: {
     fontSize: 14,
@@ -312,7 +349,10 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 4,
     marginBottom: 6,
-    backgroundColor: '#2dc937',   // temporary solid colour – we can make a real gradient later
+    // Using a gradient for price range visualization
+    backgroundColor: Platform.OS === 'web' 
+      ? 'linear-gradient(to right, #2dc937, #98d83e, #e7b416, #fc6c00, #cc3232)'
+      : '#2dc937', // Fallback for native
   },
   legendLabels: {
     flexDirection: 'row',
@@ -324,5 +364,19 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     marginTop: 8,
+  },
+  platformBadge: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    backgroundColor: 'rgba(33,150,243,0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  platformText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });

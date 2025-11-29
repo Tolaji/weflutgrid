@@ -1,0 +1,23 @@
+{
+  "name": "weflutgrid-app",
+  "version": "1.0.0",
+  "description": "Web frontend for Weflutgrid property price visualization",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx http-server -p 3000 -c-1",
+    "build": "echo 'No build step required for this static site'",
+    "deploy": "echo 'Deploy to Vercel or Netlify'"
+  },
+  "keywords": [
+    "property",
+    "real-estate",
+    "visualization",
+    "map",
+    "leaflet"
+  ],
+  "author": "Weflutgrid Team",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weflutgrid - Property Price Visualization</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom CSS -->
+    <style>
+        #map {
+            height: 100vh;
+            width: 100%;
+            z-index: 1;
+        }
+
+        .legend {
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+        }
+
+        .legend-gradient {
+            height: 20px;
+            background: linear-gradient(to right, #2dc937, #98d83e, #e7b416, #fc6c00, #cc3232);
+            border-radius: 3px;
+            margin: 5px 0;
+        }
+
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            max-width: 300px;
+        }
+
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="m-0 p-0">
+    <!-- Map Container -->
+    <div id="map"></div>
+
+    <!-- Loading Indicator -->
+    <div id="loading" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white p-4 rounded-lg shadow-lg z-50 hidden">
+        <div class="loader"></div>
+        <p class="text-center mt-2">Loading property data...</p>
+    </div>
+
+    <!-- Info Panel -->
+    <div id="info-panel" class="info-panel hidden">
+        <div class="flex justify-between items-center mb-2">
+            <h3 class="text-lg font-bold">Property Data</h3>
+            <button id="close-panel" class="text-gray-500 hover:text-gray-700">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="space-y-2">
+            <div class="flex justify-between">
+                <span class="font-semibold">Median Price:</span>
+                <span id="median-price">-</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="font-semibold">Transactions:</span>
+                <span id="transaction-count">-</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="font-semibold">Confidence:</span>
+                <span id="confidence">-</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                <div id="confidence-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Banner -->
+    <div id="error-banner" class="fixed top-4 left-4 right-4 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-lg z-50 hidden">
+        <div class="flex justify-between">
+            <p id="error-message">Error loading data</p>
+            <button id="dismiss-error" class="text-red-700 font-bold">Dismiss</button>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend fixed top-4 right-4 z-10">
+        <h4 class="font-bold mb-2">Price Range</h4>
+        <div class="legend-gradient"></div>
+        <div class="flex justify-between text-sm">
+            <span>Low</span>
+            <span>Medium</span>
+            <span>High</span>
+        </div>
+        <div class="mt-2 text-xs text-gray-600" id="legend-info">
+            0 areas shown
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <!-- Main App Script -->
+    <script src="app.js"></script>
+</body>
+</html>
