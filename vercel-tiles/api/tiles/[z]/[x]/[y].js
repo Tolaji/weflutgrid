@@ -3,7 +3,9 @@ import h3 from 'h3-js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: { rejectUnauthorized: false },
+  max: 10,
+  idleTimeoutMillis: 30000,
 });
 
 const ZOOM_TO_H3 = {
@@ -89,16 +91,18 @@ export default async function handler(req, res) {
         const query = `
           SELECT 
             h3_index,
-            AVG(price) as price,
-            COUNT(*) as count,
-            AVG(confidence) as confidence,
-            AVG(value) as value
-          FROM property_data
-          WHERE h3_index = ANY($1)
-          GROUP BY h3_index
+            weighted_metric as price,
+            tx_count as count,
+            avg_confidence as confidence,
+            normalized_value as value
+          FROM heatmap_aggregated
+          WHERE h3_index = ANY($1::text[])
+            AND h3_level = $2
         `;
 
-        const result = await client.query(query, [h3Cells]);
+        const result = await client.query(query, [h3Cells, h3Level]);
+
+        console.log(`Tile ${z}/${x}/${y}: Found ${result.rows.length} cells with data`);
 
         if (result.rows.length > 0) {
           useDbData = true;
@@ -144,12 +148,15 @@ export default async function handler(req, res) {
               return null;
             }
           }).filter(Boolean);
+        } else {
+          console.log(`Tile ${z}/${x}/${y}: No data found for these cells`);
         }
       } finally {
         client.release();
       }
     } catch (dbError) {
-      console.warn('Database connection failed, using mock data:', dbError.message);
+      console.error('Database query failed:', dbError);
+      // Don't return error to client, just return empty features
     }
 
     // If no database data was retrieved, use mock data
@@ -191,12 +198,14 @@ export default async function handler(req, res) {
     };
 
     res.setHeader('Content-Type', 'application/geo+json');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
 
     return res.status(200).json(geojson);
 
   } catch (error) {
-    console.error('Tile error:', error);
+    console.error('Tile generation error:', error);
+
+    // Return empty GeoJSON on error (don't break the map)
     return res.status(200).json({
       type: 'FeatureCollection',
       features: []
